@@ -13,7 +13,9 @@ export type ClientMessage =
   | { type: 'resume'; code: string; token: string }
   | { type: 'action'; action: Action }
   /** Start another game in the same room once the current one is over. */
-  | { type: 'new_game' };
+  | { type: 'new_game' }
+  /** Keep-alive while the app is open; free hosting sleeps without incoming messages. No reply. */
+  | { type: 'ping' };
 
 // ---- Server -> client ----
 
@@ -109,6 +111,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     }
     case 'new_game':
       return { type: 'new_game' };
+    case 'ping':
+      return { type: 'ping' };
     default:
       return null;
   }

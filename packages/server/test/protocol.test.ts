@@ -9,6 +9,7 @@ describe('parseClientMessage', () => {
     expect(parse({ type: 'join_room', code: 'ABCDE', name: 'Gabi' })).toEqual({ type: 'join_room', code: 'ABCDE', name: 'Gabi' });
     expect(parse({ type: 'resume', code: 'ABCDE', token: 'secret' })).toEqual({ type: 'resume', code: 'ABCDE', token: 'secret' });
     expect(parse({ type: 'new_game' })).toEqual({ type: 'new_game' });
+    expect(parse({ type: 'ping' })).toEqual({ type: 'ping' });
     expect(parse({ type: 'action', action: { type: 'pass' } })).toEqual({ type: 'action', action: { type: 'pass' } });
     expect(parse({ type: 'action', action: { type: 'swap', tileIds: ['a', 'b'] } })).toEqual({
       type: 'action',

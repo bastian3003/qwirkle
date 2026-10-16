@@ -1,0 +1,15 @@
+# Render Blueprint: one free web service that runs the game server
+# and serves the built client. See DEPLOY.md.
+services:
+  - type: web
+    name: legespiel
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

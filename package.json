@@ -11,5 +11,8 @@
     "build": "npm run build -w @qwirkle/client",
     "start": "npm start -w @qwirkle/server",
     "e2e": "npm run e2e -w @qwirkle/client"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

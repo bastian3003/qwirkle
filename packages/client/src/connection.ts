@@ -19,6 +19,12 @@ export interface Connection {
 
 const RETRY_MIN_MS = 1000;
 const RETRY_MAX_MS = 8000;
+/**
+ * Free hosting (Render) puts the server to sleep after 15 minutes without incoming
+ * messages, which would end the game. While the app is open, send a tiny message well
+ * before that.
+ */
+const KEEPALIVE_MS = 4 * 60 * 1000;
 
 function socketUrl(): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -114,11 +120,18 @@ export function useConnection(): Connection {
       }
     }
 
+    const keepalive = setInterval(() => {
+      if (socket.current?.readyState === WebSocket.OPEN) {
+        socket.current.send(JSON.stringify({ type: 'ping' } satisfies ClientMessage));
+      }
+    }, KEEPALIVE_MS);
+
     connect();
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       stopped = true;
       clearTimeout(retryTimer);
+      clearInterval(keepalive);
       document.removeEventListener('visibilitychange', onVisible);
       socket.current?.close();
     };

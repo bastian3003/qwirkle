@@ -89,6 +89,8 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
 
   function handle(ws: WebSocket, msg: ClientMessage): void {
     switch (msg.type) {
+      case 'ping':
+        return;
       case 'create_room':
       case 'join_room':
       case 'resume': {

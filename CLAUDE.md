@@ -43,6 +43,7 @@ Der Server ist die einzige Instanz, die Spielregeln prüft und Punkte berechnet.
 - `packages/server`: Node.js-Server mit WebSockets (`ws`), läuft per `tsx`. Räume liegen nur im Arbeitsspeicher (nach einem Neustart weg; Speichern kommt später). Nachrichtenformat in `src/protocol.ts`, Raumverwaltung ohne Sockets in `src/rooms.ts`, Verdrahtung in `src/server.ts`.
 - `packages/client`: React-Oberfläche (Vite), mobil zuerst. Prüft Züge zur Vorschau mit derselben Spiellogik, entscheidend bleibt der Server. Bildschirme in `src/screens`, Brett mit Verschieben/Zoomen in `src/components`, deutsche Texte und Fehlermeldungen in `src/texts.ts`. Browser-Tests mit Playwright in `e2e/`.
 - Der Server liefert die gebaute Oberfläche (`packages/client/dist`) mit aus, es gibt also nur eine Adresse.
+- Hosting: Render (kostenloser Tarif), Konfiguration in `render.yaml`, Anleitung in `DEPLOY.md`. Der Server schläft nach 15 Minuten ohne eingehende Nachrichten ein; der Client schickt deshalb alle 4 Minuten `ping`. Verlorene Spiele bei Neustart sind ausdrücklich in Ordnung.
 - Code, Bezeichner und Kommentare auf Englisch; Dokumentation und Texte in der App auf Deutsch.
 - Tests: `npm test` im Hauptverzeichnis (Unit-Tests), `npm run e2e` (Browser-Tests; in der Cloud-Umgebung mit `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`).
 

@@ -7,7 +7,7 @@ Private Handy-Web-App, mit der zwei Spielerinnen ein Qwirkle-artiges Legespiel g
 - [x] Spiellogik (`packages/game`): Beutel, Hand, Legen, Tauschen, Passen, Punkte inkl. Qwirkle, Startspielerin, Spielende
 - [x] Server (`packages/server`): Node.js + WebSockets, Räume per 5-stelligem Code, Wiederverbinden nach Neuladen
 - [x] Oberfläche (`packages/client`): React, Raum per Link oder Code, Steine antippen und legen, nur erlaubte Felder werden markiert, Punktevorschau, Tauschen, Passen, Spielende mit neuer Runde, Brett verschieb- und zoombar, auf den Homescreen legbar
-- [ ] Hosting
+- [x] Hosting vorbereitet: kostenlos bei Render, Anleitung in [`DEPLOY.md`](DEPLOY.md)
 
 ## Entwickeln
 
@@ -33,6 +33,7 @@ WebSocket unter `/ws`, Nachrichten als JSON. Details und Typen: `packages/server
 | `{type:"resume", code, token}` | Nach Neuladen/Verbindungsabbruch wieder einsteigen |
 | `{type:"action", action}` | Zug: `place`, `swap` oder `pass` |
 | `{type:"new_game"}` | Nach Spielende neue Runde im selben Raum |
+| `{type:"ping"}` | Lebenszeichen alle 4 Minuten, hält den kostenlosen Server wach; keine Antwort |
 
 | Server → Client | Bedeutung |
 | --- | --- |
