@@ -39,7 +39,8 @@ Der Server ist die einzige Instanz, die Spielregeln prüft und Punkte berechnet.
 - **Einzelstein im ersten Zug:** zählt 1 Punkt.
 
 ## Code-Struktur
-- `packages/game`: reine Spiellogik (TypeScript, ohne Abhängigkeiten), Tests mit Vitest. Wird später von Server und Client gemeinsam genutzt.
+- `packages/game`: reine Spiellogik (TypeScript, ohne Abhängigkeiten), Tests mit Vitest. Wird von Server und Client gemeinsam genutzt.
+- `packages/server`: Node.js-Server mit WebSockets (`ws`), läuft per `tsx`. Räume liegen nur im Arbeitsspeicher (nach einem Neustart weg; Speichern kommt später). Nachrichtenformat in `src/protocol.ts`, Raumverwaltung ohne Sockets in `src/rooms.ts`, Verdrahtung in `src/server.ts`.
 - Code, Bezeichner und Kommentare auf Englisch; Dokumentation und Texte in der App auf Deutsch.
 - Tests: `npm test` im Hauptverzeichnis.
 
