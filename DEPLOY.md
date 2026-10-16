@@ -4,7 +4,7 @@ Die App läuft als ein einziger Dienst bei [Render](https://render.com): Der Ser
 
 ## Einmalig einrichten (ca. 10 Minuten)
 
-1. Auf <https://render.com> ein Konto anlegen, am einfachsten mit „Sign in with GitHub“. Eine Kreditkarte ist für den kostenlosen Tarif nicht nötig.
+1. Auf <https://render.com> ein Konto anlegen, am einfachsten mit „Sign in with GitHub“. Render verlangt zur Missbrauchsprüfung oft eine Kreditkarte, auch für den kostenlosen Tarif. Dabei wird kurz 1 $ reserviert und gleich wieder freigegeben.
 2. Im Dashboard **New → Blueprint** wählen.
 3. Render den Zugriff auf das Repository `bastian3003/qwirkle` erlauben und es auswählen.
 4. Render findet die `render.yaml` und zeigt den Dienst **legespiel** an. Den Branch auswählen, auf dem der Code liegt (zurzeit `claude/peaceful-dijkstra-myoftp`), dann **Apply** bzw. **Deploy Blueprint** klicken.
@@ -12,6 +12,8 @@ Die App läuft als ein einziger Dienst bei [Render](https://render.com): Der Ser
 6. Adresse auf dem Handy öffnen und testen, dann an Mama und ihre Freundin schicken.
 
 Jeder neue Push auf den Branch wird automatisch neu veröffentlicht.
+
+**Kosten prüfen:** Beim Dienst muss als Instance Type **Free** stehen (kommt aus `plan: free` in `render.yaml`). Unter **Billing** sollten die „Unbilled Charges“ bei 0 $ bleiben. Steht dort etwas anderes, den Dienst auf Free umstellen oder löschen.
 
 ## Auf den Homescreen legen
 
