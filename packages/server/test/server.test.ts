@@ -208,3 +208,46 @@ function findStartLine(hand: { id: string; color: string; shape: string }[], nee
   }
   throw new Error('No start line found');
 }
+
+describe('static files', () => {
+  let dir: string;
+  let withStatic: RunningServer;
+
+  beforeEach(async () => {
+    const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    dir = await mkdtemp(join(tmpdir(), 'client-'));
+    await mkdir(join(dir, 'assets'));
+    await writeFile(join(dir, 'index.html'), '<h1>App</h1>');
+    await writeFile(join(dir, 'assets', 'app-123.js'), 'console.log(1)');
+    withStatic = await startServer({ port: 0, host: '127.0.0.1', staticDir: dir });
+  });
+
+  afterEach(async () => {
+    await withStatic.close();
+  });
+
+  const get = (path: string) => fetch(`http://127.0.0.1:${withStatic.port}${path}`);
+
+  it('serves index.html, also for invite links and unknown paths', async () => {
+    for (const path of ['/', '/?raum=ABCDE', '/irgendwas']) {
+      const res = await get(path);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/html');
+      expect(res.headers.get('cache-control')).toBe('no-cache');
+      expect(await res.text()).toBe('<h1>App</h1>');
+    }
+  });
+
+  it('serves hashed assets with long caching', async () => {
+    const res = await get('/assets/app-123.js');
+    expect(res.headers.get('content-type')).toContain('text/javascript');
+    expect(res.headers.get('cache-control')).toContain('immutable');
+  });
+
+  it('does not serve files outside the folder', async () => {
+    const res = await get('/..%2f..%2fetc%2fpasswd');
+    expect(await res.text()).not.toContain('root:');
+  });
+});

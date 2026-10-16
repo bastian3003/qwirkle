@@ -6,7 +6,8 @@ Private Handy-Web-App, mit der zwei Spielerinnen ein Qwirkle-artiges Legespiel g
 
 - [x] Spiellogik (`packages/game`): Beutel, Hand, Legen, Tauschen, Passen, Punkte inkl. Qwirkle, Startspielerin, Spielende
 - [x] Server (`packages/server`): Node.js + WebSockets, Räume per 5-stelligem Code, Wiederverbinden nach Neuladen
-- [ ] Oberfläche (React-PWA, Touch, verschiebbares/zoombares Brett)
+- [x] Oberfläche (`packages/client`): React, Raum per Link oder Code, Steine antippen und legen, nur erlaubte Felder werden markiert, Punktevorschau, Tauschen, Passen, Spielende mit neuer Runde, Brett verschieb- und zoombar, auf den Homescreen legbar
+- [ ] Hosting
 
 ## Entwickeln
 
@@ -14,8 +15,12 @@ Private Handy-Web-App, mit der zwei Spielerinnen ein Qwirkle-artiges Legespiel g
 npm install
 npm test          # Unit-Tests (Vitest)
 npm run typecheck
-npm start -w @qwirkle/server   # Server auf Port 3000 (PORT=… zum Ändern)
+npm run build     # Oberfläche bauen
+npm start         # Server + Oberfläche auf http://localhost:3000 (PORT=… zum Ändern)
+npm run e2e       # Browser-Tests mit zwei simulierten Handys
 ```
+
+Zum Entwickeln mit automatischem Neuladen: `npm run dev -w @qwirkle/server` und parallel `npm run dev -w @qwirkle/client` (Oberfläche auf Port 5173, leitet `/ws` an den Server weiter).
 
 ## Server-Protokoll
 

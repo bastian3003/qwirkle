@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import { type ClientMessage, MAX_MESSAGE_BYTES, type ServerMessage, parseClientMessage } from './protocol';
 import { type Room, RoomManager, type Seat } from './rooms';
+import { createStaticHandler } from './static';
 
 export const WS_PATH = '/ws';
 const HEARTBEAT_MS = 30_000;
@@ -14,6 +15,8 @@ export interface ServerOptions {
   port: number;
   host?: string;
   manager?: RoomManager;
+  /** Folder with the built client. Without it, only the WebSocket and /health are served. */
+  staticDir?: string;
 }
 
 export interface RunningServer {
@@ -29,11 +32,13 @@ interface Binding {
 
 export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const manager = opts.manager ?? new RoomManager();
-  const http: Server = createServer((req, res) => {
+  const serveStatic = opts.staticDir ? createStaticHandler(opts.staticDir) : null;
+  const http: Server = createServer(async (req, res) => {
     if (req.url === '/health') {
       res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
       return;
     }
+    if (serveStatic && (await serveStatic(req, res))) return;
     res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found');
   });
   const wss = new WebSocketServer({ server: http, path: WS_PATH, maxPayload: MAX_MESSAGE_BYTES });

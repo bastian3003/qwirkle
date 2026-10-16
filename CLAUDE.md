@@ -41,8 +41,10 @@ Der Server ist die einzige Instanz, die Spielregeln prüft und Punkte berechnet.
 ## Code-Struktur
 - `packages/game`: reine Spiellogik (TypeScript, ohne Abhängigkeiten), Tests mit Vitest. Wird von Server und Client gemeinsam genutzt.
 - `packages/server`: Node.js-Server mit WebSockets (`ws`), läuft per `tsx`. Räume liegen nur im Arbeitsspeicher (nach einem Neustart weg; Speichern kommt später). Nachrichtenformat in `src/protocol.ts`, Raumverwaltung ohne Sockets in `src/rooms.ts`, Verdrahtung in `src/server.ts`.
+- `packages/client`: React-Oberfläche (Vite), mobil zuerst. Prüft Züge zur Vorschau mit derselben Spiellogik, entscheidend bleibt der Server. Bildschirme in `src/screens`, Brett mit Verschieben/Zoomen in `src/components`, deutsche Texte und Fehlermeldungen in `src/texts.ts`. Browser-Tests mit Playwright in `e2e/`.
+- Der Server liefert die gebaute Oberfläche (`packages/client/dist`) mit aus, es gibt also nur eine Adresse.
 - Code, Bezeichner und Kommentare auf Englisch; Dokumentation und Texte in der App auf Deutsch.
-- Tests: `npm test` im Hauptverzeichnis.
+- Tests: `npm test` im Hauptverzeichnis (Unit-Tests), `npm run e2e` (Browser-Tests; in der Cloud-Umgebung mit `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`).
 
 ## Arbeitsweise
 - Spiellogik (Legen prüfen, Punkte zählen) als reine, gut testbare Funktionen schreiben und mit Unit-Tests abdecken, besonders Punkte-Sonderfälle (Stein in zwei Reihen, Qwirkle, Einzelstein).

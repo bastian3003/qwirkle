@@ -7,6 +7,9 @@
   ],
   "scripts": {
     "test": "npm test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build -w @qwirkle/client",
+    "start": "npm start -w @qwirkle/server",
+    "e2e": "npm run e2e -w @qwirkle/client"
   }
 }
