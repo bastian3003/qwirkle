@@ -74,10 +74,22 @@ test('two players create, join, play a first move and resume after reload', asyn
   await expect(other.locator('.cell.tile')).toHaveCount(line.length);
   await expect(other.getByTestId('hint')).toContainText('Du bist dran');
 
-  // An invalid move is not offered: tapping a tile shows only allowed slots, every one of them legal.
+  // No hints: a selected tile may go on any free cell next to the row (2 per tile above/below, plus both ends).
   await other.getByTestId('hand-tile').first().tap();
-  await expect(other.getByTestId('hint')).toContainText(/markiertes Feld|passt gerade nirgends/);
+  await expect(other.getByTestId('hint')).toContainText('freies Feld');
+  await expect(other.getByTestId('slot')).toHaveCount(2 * line.length + 2);
   await other.screenshot({ path: 'test-results/6-auswahl.png' });
+
+  // A move that is not in one line is only refused when confirming, and nothing is sent.
+  await other.locator('[data-testid="slot"][data-x="-1"][data-y="0"]').tap();
+  await other.getByTestId('hand-tile').first().tap();
+  await other.locator('[data-testid="slot"][data-x="0"][data-y="-1"]').tap();
+  await other.getByTestId('confirm').tap();
+  await expect(other.getByTestId('hint')).toContainText('So geht das nicht');
+  await expect(other.locator('.cell.pending')).toHaveCount(2);
+  await other.screenshot({ path: 'test-results/7-abgelehnt.png' });
+  await other.getByRole('button', { name: 'Zurücknehmen', exact: true }).tap();
+  await expect(other.getByTestId('hand-tile')).toHaveCount(6);
 
   await mamaContext.close();
   await gabiContext.close();

@@ -1,49 +1,37 @@
 import { type Board, type Tile, cellKey } from '@qwirkle/game';
 import { describe, expect, it } from 'vitest';
-import { bounds, legalSlots, previewMove, withPending } from './logic';
+import { bounds, candidateSlots, checkMove, withPending } from './logic';
 import { lastMoveText } from './texts';
 
 const t = (color: Tile['color'], shape: Tile['shape'], n = 0): Tile => ({ id: `${color}-${shape}-${n}`, color, shape });
 const keys = (cells: { x: number; y: number }[]) => cells.map((c) => cellKey(c.x, c.y)).sort();
 
-describe('legalSlots', () => {
+describe('candidateSlots', () => {
   it('offers only the origin on an empty board', () => {
-    expect(legalSlots({}, [], t('red', 'circle'))).toEqual([{ x: 0, y: 0 }]);
+    expect(candidateSlots({}, [])).toEqual([{ x: 0, y: 0 }]);
   });
 
-  it('offers only cells where the tile fits', () => {
+  it('offers every free neighbour, whether or not a tile would fit there', () => {
     const board: Board = { [cellKey(0, 0)]: t('red', 'circle') };
-    // A red square fits on all four sides of a red circle.
-    expect(keys(legalSlots(board, [], t('red', 'square')))).toEqual(['-1,0', '0,-1', '0,1', '1,0']);
-    // A blue square fits nowhere.
-    expect(legalSlots(board, [], t('blue', 'square'))).toEqual([]);
+    expect(keys(candidateSlots(board, []))).toEqual(['-1,0', '0,-1', '0,1', '1,0']);
   });
 
-  it('leaves the direction open after one pending tile', () => {
+  it('includes the neighbours of pending tiles', () => {
     const board: Board = { [cellKey(0, 0)]: t('red', 'circle') };
     const pending = [{ x: 1, y: 0, tile: t('red', 'square') }];
-    // Along the row, or above/below the pending square.
-    expect(keys(legalSlots(board, pending, t('red', 'star')))).toEqual(['-1,0', '1,-1', '1,1', '2,0']);
-  });
-
-  it('keeps the next tile in line once two tiles are pending', () => {
-    const board: Board = { [cellKey(0, 0)]: t('red', 'circle') };
-    const pending = [
-      { x: 1, y: 0, tile: t('red', 'square') },
-      { x: 2, y: 0, tile: t('red', 'diamond') },
-    ];
-    expect(keys(legalSlots(board, pending, t('red', 'star')))).toEqual(['-1,0', '3,0']);
+    expect(keys(candidateSlots(board, pending))).toEqual(['-1,0', '0,-1', '0,1', '1,-1', '1,1', '2,0']);
   });
 });
 
-describe('previewMove', () => {
-  it('is null without pending tiles', () => {
-    expect(previewMove({}, [])).toBeNull();
+describe('checkMove', () => {
+  it('scores a valid move with the shared rules', () => {
+    const board: Board = { [cellKey(0, 0)]: t('red', 'circle') };
+    expect(checkMove(board, [{ x: 1, y: 0, tile: t('red', 'square') }])).toMatchObject({ ok: true, score: 2 });
   });
 
-  it('scores the pending tiles with the shared rules', () => {
+  it('reports why a move is invalid', () => {
     const board: Board = { [cellKey(0, 0)]: t('red', 'circle') };
-    expect(previewMove(board, [{ x: 1, y: 0, tile: t('red', 'square') }])).toMatchObject({ ok: true, score: 2 });
+    expect(checkMove(board, [{ x: 1, y: 0, tile: t('blue', 'square') }])).toEqual({ ok: false, error: 'INVALID_LINE' });
   });
 });
 

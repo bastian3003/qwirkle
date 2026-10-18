@@ -18,18 +18,17 @@ export function withPending(board: Board, pending: readonly Placement[]): Board 
 }
 
 /**
- * Cells where `tile` can go next, given the tiles already pending this turn.
- * Uses the same rules as the server, so the player only sees spots that are allowed.
+ * Every empty cell next to a tile (placed or pending) where a tile could be put down.
+ * Deliberately not filtered by the rules: finding a spot that fits is the game,
+ * so the app must not give it away.
  */
-export function legalSlots(board: Board, pending: readonly Placement[], tile: Tile): Position[] {
-  return frontierCells(withPending(board, pending)).filter(
-    (cell) => evaluatePlacement(board, [...pending, { x: cell.x, y: cell.y, tile }]).ok,
-  );
+export function candidateSlots(board: Board, pending: readonly Placement[]): Position[] {
+  return frontierCells(withPending(board, pending));
 }
 
-/** Previews the pending move. null when nothing is pending. */
-export function previewMove(board: Board, pending: readonly Placement[]): PlacementResult | null {
-  return pending.length === 0 ? null : evaluatePlacement(board, pending);
+/** Checks the pending move with the shared rules. Only called when the player confirms. */
+export function checkMove(board: Board, pending: readonly Placement[]): PlacementResult {
+  return evaluatePlacement(board, pending);
 }
 
 /** Bounding box of the given cells, or null if there are none. */

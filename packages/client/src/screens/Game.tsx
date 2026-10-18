@@ -3,7 +3,7 @@ import type { ClientMessage, RoomView } from '@qwirkle/server/protocol';
 import { useEffect, useMemo, useState } from 'react';
 import { BoardView } from '../components/BoardView';
 import { TileFace, tileLabel } from '../components/TileView';
-import { legalSlots, previewMove } from '../logic';
+import { candidateSlots, checkMove } from '../logic';
 import { errorText, lastMoveText, points, tiles } from '../texts';
 
 interface Props {
@@ -27,6 +27,8 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
   const [pending, setPending] = useState<Placement[]>([]);
   const [swapIds, setSwapIds] = useState<ReadonlySet<string>>(new Set());
   const [waiting, setWaiting] = useState(false);
+  /** Why the last attempt to confirm was refused. Shown until the move is changed. */
+  const [moveError, setMoveError] = useState<string | null>(null);
 
   // A new state from the server: drop pending tiles that were played or whose cell is now taken.
   useEffect(() => {
@@ -46,13 +48,16 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
   const myTurn = game.isYourTurn && !waiting;
   const firstMove = isBoardEmpty(game.board);
 
+  // All free cells next to the tiles, not just the ones where the selected tile fits:
+  // spotting a fitting place is the point of the game.
   const slots = useMemo(
-    () => (myTurn && mode === 'place' && selected ? legalSlots(game.board, pending, selected) : []),
+    () => (myTurn && mode === 'place' && selected ? candidateSlots(game.board, pending) : []),
     [myTurn, mode, selected, game.board, pending],
   );
-  const preview = previewMove(game.board, pending);
   const missingForStart = firstMove ? Math.max(0, game.minTilesFirstMove - pending.length) : 0;
-  const canConfirm = myTurn && preview?.ok === true && missingForStart === 0;
+
+  // Any change to the move clears the old complaint.
+  useEffect(() => setMoveError(null), [pending]);
 
   const highlight = useMemo(() => {
     const m = game.lastMove;
@@ -88,6 +93,16 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
   }
 
   function confirmPlace() {
+    // The rules are checked only now, like a table partner checking after the tiles are down.
+    if (missingForStart > 0) {
+      setMoveError(`Im ersten Zug musst du ${tiles(game.minTilesFirstMove)} legen.`);
+      return;
+    }
+    const result = checkMove(game.board, pending);
+    if (!result.ok) {
+      setMoveError(`So geht das nicht: ${errorText(result.error)}`);
+      return;
+    }
     act({
       type: 'action',
       action: { type: 'place', placements: pending.map((p) => ({ x: p.x, y: p.y, tileId: p.tile.id })) },
@@ -110,14 +125,10 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
         ? `Tippe die Steine an, die du tauschen willst (höchstens ${Math.min(game.bagCount, 6)}).`
         : `${tiles(swapIds.size)} ausgewählt.`;
     }
-    if (preview && !preview.ok) return errorText(preview.error);
-    if (selected) return slots.length > 0 ? 'Tippe auf ein markiertes Feld.' : 'Dieser Stein passt gerade nirgends.';
-    if (missingForStart > 0) {
-      return pending.length === 0
-        ? `Du fängst an! Lege ${tiles(game.minTilesFirstMove)} in eine Reihe.`
-        : `Noch ${tiles(missingForStart)} für den ersten Zug.`;
-    }
-    if (pending.length > 0) return 'Weiter legen oder Zug bestätigen.';
+    if (moveError) return moveError;
+    if (selected) return 'Tippe auf ein freies Feld.';
+    if (firstMove && pending.length === 0) return `Du fängst an! Lege ${tiles(game.minTilesFirstMove)} in eine Reihe.`;
+    if (pending.length > 0) return 'Weiter legen oder auf „Legen“ tippen.';
     if (game.canPass) return 'Kein Stein passt mehr. Du kannst nur passen.';
     return 'Du bist dran! Tippe einen Stein an.';
   }
@@ -168,7 +179,11 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
       />
 
       <footer className="controls">
-        <p className={`hint${game.isYourTurn ? ' your-turn' : ''}`} data-testid="hint" aria-live="polite">
+        <p
+          className={`hint${moveError ? ' error' : game.isYourTurn ? ' your-turn' : ''}`}
+          data-testid="hint"
+          aria-live="polite"
+        >
           {hint()}
         </p>
 
@@ -212,8 +227,8 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
               <button className="secondary" onClick={() => setPending([])}>
                 Zurücknehmen
               </button>
-              <button className="primary" onClick={confirmPlace} disabled={!canConfirm} data-testid="confirm">
-                {preview?.ok ? `Legen (+${preview.score})` : 'Legen'}
+              <button className="primary" onClick={confirmPlace} disabled={!myTurn} data-testid="confirm">
+                Legen
               </button>
             </>
           ) : game.canPass ? (
