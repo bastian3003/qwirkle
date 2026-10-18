@@ -310,6 +310,14 @@ input {
 
 /* ---- Board ---- */
 
+.board-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .board {
   position: relative;
   flex: 1;
@@ -319,8 +327,8 @@ input {
   user-select: none;
   -webkit-user-select: none;
   background-color: var(--table);
-  background-image: radial-gradient(var(--table-grid) 1.5px, transparent 1.5px);
-  background-size: 24px 24px;
+  /* A dot on every cell corner; size and position are set from the zoom in BoardView. */
+  background-image: radial-gradient(circle at 0 0, #cfc4ad 2.5px, transparent 3px);
 }
 
 .board-inner {
@@ -367,13 +375,16 @@ input {
   pointer-events: none;
 }
 
-.cell.slot::before {
-  content: '';
-  position: absolute;
-  inset: 6px;
+.cell.pending.lifted {
+  opacity: 0.3;
+}
+
+.cell.drop-target {
   border-radius: 10px;
-  border: 2px dashed rgb(47 93 80 / 55%);
-  background: rgb(47 93 80 / 7%);
+  outline: 3px solid rgb(47 93 80 / 45%);
+  outline-offset: -4px;
+  background: rgb(47 93 80 / 8%);
+  pointer-events: none;
 }
 
 .board-controls {
@@ -435,6 +446,75 @@ input {
   background: none;
   border-radius: 14px;
   transition: transform 0.12s ease;
+}
+
+.hand-tile {
+  touch-action: none;
+}
+
+.hand-tile.lifted {
+  opacity: 0.3;
+}
+
+.drag-ghost {
+  position: fixed;
+  z-index: 50;
+  width: 64px;
+  height: 64px;
+  transform: translate(-50%, -50%) scale(1.08);
+  pointer-events: none;
+  filter: drop-shadow(0 8px 10px rgb(0 0 0 / 35%));
+}
+
+/* ---- Turn countdown ---- */
+
+.countdown {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 18px 8px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.countdown-number {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #fff;
+  font-size: 1.6rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.countdown.mine .countdown-number {
+  background: var(--danger);
+  animation: beat 1s ease-in-out infinite;
+}
+
+@keyframes beat {
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+.countdown-text {
+  font-weight: 600;
+}
+
+.countdown.mine .countdown-text {
+  color: var(--danger);
 }
 
 .hand-tile.selected {

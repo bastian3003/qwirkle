@@ -1,4 +1,39 @@
-import { type Page, expect, test } from '@playwright/test';
+import { type Locator, type Page, expect, test } from '@playwright/test';
+import { TURN_TIME_MS } from '../playwright.config';
+
+type Point = { x: number; y: number };
+
+async function box(locator: Locator) {
+  const b = await locator.boundingBox();
+  if (!b) throw new Error('element not visible');
+  return b;
+}
+const centerOf = async (l: Locator): Promise<Point> => {
+  const b = await box(l);
+  return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+};
+const rightOf = async (l: Locator): Promise<Point> => {
+  const b = await box(l);
+  return { x: b.x + b.width * 1.5, y: b.y + b.height / 2 };
+};
+const leftOf = async (l: Locator): Promise<Point> => {
+  const b = await box(l);
+  return { x: b.x - b.width / 2, y: b.y + b.height / 2 };
+};
+const aboveOf = async (l: Locator): Promise<Point> => {
+  const b = await box(l);
+  return { x: b.x + b.width / 2, y: b.y - b.height / 2 };
+};
+
+/** Drags with the mouse in small steps, like a finger would. */
+async function dragTo(page: Page, from: Locator, to: Point) {
+  const start = await centerOf(from);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 10, start.y - 10, { steps: 3 });
+  await page.mouse.move(to.x, to.y, { steps: 10 });
+  await page.mouse.up();
+}
 
 /** Reads the hand from the DOM and finds the longest line: same color or same shape, all different. */
 async function longestLine(page: Page): Promise<{ color: string; shape: string }[]> {
@@ -21,7 +56,7 @@ async function longestLine(page: Page): Promise<{ color: string; shape: string }
   return best;
 }
 
-test('two players create, join, play a first move and resume after reload', async ({ browser }) => {
+test('two players create, join, drag a first move, resume after reload and run out of time', async ({ browser }) => {
   const mamaContext = await browser.newContext();
   const gabiContext = await browser.newContext();
   const mama = await mamaContext.newPage();
@@ -50,14 +85,17 @@ test('two players create, join, play a first move and resume after reload', asyn
   await expect(other.getByTestId('hint')).toContainText('ist dran');
   await starter.screenshot({ path: 'test-results/2-start.png' });
 
-  // Lay the line left to right: tap a tile, then the slot next to the previous one.
+  // Lay the line left to right by dragging each tile next to the previous one.
   const line = await longestLine(starter);
-  // Select by look, not position: the hand closes up after each tile is laid.
   for (const [i, t] of line.entries()) {
-    await starter.locator(`[data-testid="hand-tile"][data-color="${t.color}"][data-shape="${t.shape}"]`).first().tap();
-    await starter.locator(`[data-testid="slot"][data-x="${i}"][data-y="0"]`).tap();
+    const handTile = starter.locator(`[data-testid="hand-tile"][data-color="${t.color}"][data-shape="${t.shape}"]`).first();
+    const target =
+      i === 0 ? await centerOf(starter.getByTestId('board')) : await rightOf(starter.locator('.cell.pending').last());
+    await dragTo(starter, handTile, target);
+    await expect(starter.locator('.cell.pending')).toHaveCount(i + 1);
   }
-  await expect(starter.getByTestId('confirm')).toBeEnabled();
+  // No placement boxes anywhere.
+  await expect(starter.locator('.cell.slot')).toHaveCount(0);
   await starter.screenshot({ path: 'test-results/3-gelegt.png' });
   await starter.getByTestId('confirm').tap();
 
@@ -74,22 +112,39 @@ test('two players create, join, play a first move and resume after reload', asyn
   await expect(other.locator('.cell.tile')).toHaveCount(line.length);
   await expect(other.getByTestId('hint')).toContainText('Du bist dran');
 
-  // No hints: a selected tile may go on any free cell next to the row (2 per tile above/below, plus both ends).
+  // Tapping still works: select a tile, then tap a free cell left of the row (no box is shown there).
+  const firstOnBoard = other.locator('.cell.tile[data-x="0"][data-y="0"]');
   await other.getByTestId('hand-tile').first().tap();
-  await expect(other.getByTestId('hint')).toContainText('freies Feld');
-  await expect(other.getByTestId('slot')).toHaveCount(2 * line.length + 2);
-  await other.screenshot({ path: 'test-results/6-auswahl.png' });
+  await expect(other.getByTestId('hint')).toContainText('Tippe aufs Spielfeld');
+  const left = await leftOf(firstOnBoard);
+  await other.touchscreen.tap(left.x, left.y);
+  await expect(other.locator('.cell.pending[data-x="-1"][data-y="0"]')).toHaveCount(1);
 
-  // A move that is not in one line is only refused when confirming, and nothing is sent.
-  await other.locator('[data-testid="slot"][data-x="-1"][data-y="0"]').tap();
-  await other.getByTestId('hand-tile').first().tap();
-  await other.locator('[data-testid="slot"][data-x="0"][data-y="-1"]').tap();
+  // A pending tile can be dragged to another cell: above the first tile. Now the two are not in one line.
+  const above = await aboveOf(firstOnBoard);
+  await dragTo(other, other.locator('.cell.pending'), above);
+  await expect(other.locator('.cell.pending[data-x="0"][data-y="-1"]')).toHaveCount(1);
+  await dragTo(other, other.getByTestId('hand-tile').first(), await leftOf(firstOnBoard));
+  await expect(other.locator('.cell.pending')).toHaveCount(2);
+
+  // The rules are only checked when confirming.
   await other.getByTestId('confirm').tap();
   await expect(other.getByTestId('hint')).toContainText('So geht das nicht');
-  await expect(other.locator('.cell.pending')).toHaveCount(2);
   await other.screenshot({ path: 'test-results/7-abgelehnt.png' });
+
+  // Dragging a pending tile back onto the hand returns it.
+  const handBox = (await other.locator('.hand').boundingBox())!;
+  await dragTo(other, other.locator('.cell.pending').first(), { x: handBox.x + handBox.width - 20, y: handBox.y + handBox.height / 2 });
+  await expect(other.locator('.cell.pending')).toHaveCount(1);
   await other.getByRole('button', { name: 'Zurücknehmen', exact: true }).tap();
   await expect(other.getByTestId('hand-tile')).toHaveCount(6);
+
+  // Waiting too long: a countdown appears for both, then the turn is forfeited.
+  await expect(other.getByTestId('countdown')).toBeVisible({ timeout: TURN_TIME_MS });
+  await expect(starter.getByTestId('countdown')).toContainText('muss sich beeilen');
+  await other.screenshot({ path: 'test-results/8-countdown.png' });
+  await expect(starter.getByTestId('last-move')).toContainText('war zu langsam', { timeout: TURN_TIME_MS });
+  await expect(starter.getByTestId('hint')).toContainText('Du bist dran');
 
   await mamaContext.close();
   await gabiContext.close();

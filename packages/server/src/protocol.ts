@@ -1,6 +1,10 @@
 import { type Action, type GameError, HAND_SIZE, type PlayerView } from '@qwirkle/game';
 
 export const MAX_NAME_LENGTH = 20;
+/** Time per turn: 60 seconds to think, then a visible 10-second countdown. */
+export const TURN_TIME_MS = 70_000;
+/** The countdown is shown once this much time is left. */
+export const COUNTDOWN_MS = 10_000;
 /** Upper bound for a single WebSocket message; real messages are far smaller. */
 export const MAX_MESSAGE_BYTES = 16 * 1024;
 
@@ -24,6 +28,12 @@ export interface RoomView {
   players: { id: string; name: string; connected: boolean }[];
   /** null while waiting for the second player. */
   game: PlayerView | null;
+  /**
+   * Time left for the current turn when this message was sent. Relative, because phone
+   * clocks are not in sync with the server. null when the clock is not running
+   * (no game, game over, or the current player is offline).
+   */
+  turnRemainingMs: number | null;
 }
 
 export type ServerError =

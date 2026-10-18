@@ -1,7 +1,7 @@
 import { type Server, createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
-import { type ClientMessage, MAX_MESSAGE_BYTES, type ServerMessage, parseClientMessage } from './protocol';
+import { type ClientMessage, MAX_MESSAGE_BYTES, type ServerMessage, TURN_TIME_MS, parseClientMessage } from './protocol';
 import { type Room, RoomManager, type Seat } from './rooms';
 import { createStaticHandler } from './static';
 
@@ -17,6 +17,8 @@ export interface ServerOptions {
   manager?: RoomManager;
   /** Folder with the built client. Without it, only the WebSocket and /health are served. */
   staticDir?: string;
+  /** Time per turn; shorter in tests. */
+  turnTimeMs?: number;
 }
 
 export interface RunningServer {
@@ -46,6 +48,41 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const bindings = new Map<WebSocket, Binding>();
   const roomSockets = new Map<string, Set<WebSocket>>();
   const alive = new WeakMap<WebSocket, boolean>();
+  const turnTimeMs = opts.turnTimeMs ?? TURN_TIME_MS;
+  /** Running turn clocks per room code, with the turn they were started for. */
+  const clocks = new Map<string, { serial: number; timer: ReturnType<typeof setTimeout> }>();
+
+  function stopClock(room: Room): void {
+    const clock = clocks.get(room.code);
+    if (clock) clearTimeout(clock.timer);
+    clocks.delete(room.code);
+    manager.stopClock(room);
+  }
+
+  /**
+   * Makes the turn clock match the room: running for the current turn while the
+   * player whose turn it is is connected, stopped otherwise. Reconnecting gives
+   * the full time again, so a dropped connection never costs a turn.
+   */
+  function syncClock(room: Room): void {
+    const game = room.game;
+    if (!game || game.status !== 'playing') return stopClock(room);
+    const current = game.players[game.currentPlayerIndex]!.id;
+    if (!isConnected(room.code, current)) return stopClock(room);
+    if (clocks.get(room.code)?.serial === room.turnSerial) return; // already running for this turn
+
+    stopClock(room);
+    manager.startClock(room, turnTimeMs);
+    const serial = room.turnSerial;
+    const timer = setTimeout(() => {
+      clocks.delete(room.code);
+      if (manager.timeout(room, serial)) {
+        syncClock(room);
+        broadcast(room);
+      }
+    }, turnTimeMs);
+    clocks.set(room.code, { serial, timer });
+  }
 
   function send(ws: WebSocket, msg: ServerMessage): void {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -75,7 +112,10 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     sockets?.delete(ws);
     if (sockets?.size === 0) roomSockets.delete(binding.code);
     const room = manager.getRoom(binding.code);
-    if (room) broadcast(room);
+    if (room) {
+      syncClock(room);
+      broadcast(room);
+    }
   }
 
   function bind(ws: WebSocket, seat: Seat): void {
@@ -84,6 +124,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     if (!roomSockets.has(seat.room.code)) roomSockets.set(seat.room.code, new Set());
     roomSockets.get(seat.room.code)!.add(ws);
     send(ws, { type: 'welcome', code: seat.room.code, playerId: seat.player.id, token: seat.player.token });
+    syncClock(seat.room);
     broadcast(seat.room);
   }
 
@@ -114,8 +155,12 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         }
         const result =
           msg.type === 'action' ? manager.act(room, binding.playerId, msg.action) : manager.newGame(room, binding.playerId);
-        if (result.ok) broadcast(room);
-        else send(ws, { type: 'error', error: result.error });
+        if (result.ok) {
+          syncClock(room);
+          broadcast(room);
+        } else {
+          send(ws, { type: 'error', error: result.error });
+        }
         return;
       }
     }
@@ -157,6 +202,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
           new Promise<void>((done) => {
             clearInterval(heartbeat);
             clearInterval(sweeper);
+            for (const clock of clocks.values()) clearTimeout(clock.timer);
             for (const ws of wss.clients) ws.terminate();
             wss.close();
             http.close(() => done());

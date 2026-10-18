@@ -1,5 +1,5 @@
 import { randomBytes, randomInt } from 'node:crypto';
-import { type Action, type GameState, type Rng, applyAction, createGame, getPlayerView } from '@qwirkle/game';
+import { type Action, type GameState, type Rng, applyAction, applyTimeout, createGame, getPlayerView } from '@qwirkle/game';
 import { type RoomView, type ServerError, normalizeCode, normalizeName } from './protocol';
 
 export const PLAYERS_PER_ROOM = 2;
@@ -19,6 +19,10 @@ export interface Room {
   players: RoomPlayer[];
   game: GameState | null;
   lastActivity: number;
+  /** Increases with every new turn, so a stale turn clock can tell it is out of date. */
+  turnSerial: number;
+  /** When the current turn runs out, or null while the clock is stopped. */
+  turnDeadline: number | null;
 }
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: ServerError };
@@ -77,7 +81,7 @@ export class RoomManager {
     let code = this.generateCode();
     while (this.rooms.has(code)) code = this.generateCode();
     const player: RoomPlayer = { id: 'p1', name: clean, token: this.generateToken() };
-    const room: Room = { code, players: [player], game: null, lastActivity: this.now() };
+    const room: Room = { code, players: [player], game: null, lastActivity: this.now(), turnSerial: 0, turnDeadline: null };
     this.rooms.set(code, room);
     return { ok: true, value: { room, player } };
   }
@@ -92,7 +96,10 @@ export class RoomManager {
 
     const player: RoomPlayer = { id: `p${room.players.length + 1}`, name: clean, token: this.generateToken() };
     room.players.push(player);
-    if (room.players.length === PLAYERS_PER_ROOM) room.game = createGame(room.players, this.rng);
+    if (room.players.length === PLAYERS_PER_ROOM) {
+      room.game = createGame(room.players, this.rng);
+      this.nextTurn(room);
+    }
     this.touch(room);
     return { ok: true, value: { room, player } };
   }
@@ -110,6 +117,7 @@ export class RoomManager {
     const result = applyAction(room.game, playerId, action, this.rng);
     if (!result.ok) return { ok: false, error: result.error };
     room.game = result.state;
+    this.nextTurn(room);
     this.touch(room);
     return { ok: true, value: room };
   }
@@ -119,8 +127,30 @@ export class RoomManager {
     if (!room.game) return { ok: false, error: 'GAME_NOT_STARTED' };
     if (room.game.status !== 'finished') return { ok: false, error: 'GAME_NOT_FINISHED' };
     room.game = createGame(room.players, this.rng);
+    this.nextTurn(room);
     this.touch(room);
     return { ok: true, value: room };
+  }
+
+  /** Starts the clock for the current turn. */
+  startClock(room: Room, limitMs: number): void {
+    room.turnDeadline = this.now() + limitMs;
+  }
+
+  stopClock(room: Room): void {
+    room.turnDeadline = null;
+  }
+
+  /**
+   * Ends the current turn because time ran out. `serial` is the turn the clock was
+   * started for; if a move was made in the meantime, nothing happens.
+   */
+  timeout(room: Room, serial: number): boolean {
+    if (serial !== room.turnSerial || room.game?.status !== 'playing') return false;
+    room.game = applyTimeout(room.game);
+    this.nextTurn(room);
+    this.touch(room);
+    return true;
   }
 
   /** What one player gets to see of a room. Tokens and the other hand stay on the server. */
@@ -129,6 +159,7 @@ export class RoomManager {
       code: room.code,
       players: room.players.map((p) => ({ id: p.id, name: p.name, connected: isConnected(p.id) })),
       game: room.game ? getPlayerView(room.game, playerId) : null,
+      turnRemainingMs: room.turnDeadline === null ? null : Math.max(0, room.turnDeadline - this.now()),
     };
   }
 
@@ -143,6 +174,11 @@ export class RoomManager {
       }
     }
     return removed;
+  }
+
+  private nextTurn(room: Room): void {
+    room.turnSerial++;
+    room.turnDeadline = null;
   }
 
   private touch(room: Room): void {

@@ -72,5 +72,7 @@ export function lastMoveText(move: LastMove, nameOf: (id: string) => string, you
       return `${who} ${tiles(move.count)} getauscht.`;
     case 'pass':
       return `${who} gepasst.`;
+    case 'timeout':
+      return you ? 'Deine Zeit ist abgelaufen – der Zug ist verfallen.' : `${nameOf(move.playerId)} war zu langsam – der Zug ist verfallen.`;
   }
 }

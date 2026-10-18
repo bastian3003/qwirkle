@@ -24,7 +24,9 @@ export interface PlayerState {
 export type LastMove =
   | { type: 'place'; playerId: string; placements: Placement[]; score: number; qwirkles: number }
   | { type: 'swap'; playerId: string; count: number }
-  | { type: 'pass'; playerId: string };
+  | { type: 'pass'; playerId: string }
+  /** The player ran out of time; nothing was played. */
+  | { type: 'timeout'; playerId: string };
 
 export type EndReason = 'hand_emptied' | 'blocked';
 
@@ -227,6 +229,27 @@ function pass(state: GameState, index: number): ActionResult {
   // Everyone passed in a row: nobody can move any more.
   const blocked = next.consecutivePasses >= state.players.length;
   return { ok: true, state: blocked ? finish(next, 'blocked') : advance(next) };
+}
+
+/**
+ * The current player ran out of time: the turn passes on without points.
+ * Not a client action; the server calls this when the turn clock expires.
+ * Does not count as passing, so it can never end the game.
+ */
+export function applyTimeout(state: GameState): GameState {
+  if (state.status !== 'playing') return state;
+  const player = state.players[state.currentPlayerIndex]!;
+  const next = advance({
+    ...state,
+    consecutivePasses: 0,
+    lastMove: { type: 'timeout', playerId: player.id },
+  });
+  // Before the opening move, the next player must lay their own longest line,
+  // not the one of the player who timed out.
+  if (isBoardEmpty(state.board)) {
+    next.minTilesFirstMove = longestStartLine(next.players[next.currentPlayerIndex]!.hand);
+  }
+  return next;
 }
 
 function advance(state: GameState): GameState {

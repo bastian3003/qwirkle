@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cellKey } from '../src/board';
-import { type GameState, applyAction, createGame, getPlayerView } from '../src/game';
+import { type GameState, applyAction, applyTimeout, createGame, getPlayerView } from '../src/game';
 import { seededRng } from '../src/random';
 import { longestStartLine } from '../src/rules';
 import { board, makeState, tile } from './helpers';
@@ -294,5 +294,38 @@ describe('getPlayerView', () => {
     const other = current === 'p1' ? 'p2' : 'p1';
     expect(getPlayerView(g, current).isYourTurn).toBe(true);
     expect(getPlayerView(g, other).isYourTurn).toBe(false);
+  });
+});
+
+describe('applyTimeout', () => {
+  it('passes the turn on without points and keeps the hand', () => {
+    const hand = filler();
+    const state = makeState({ hands: [hand, filler()], bag: filler(), board: board([0, 0, tile('red', 'circle')]), scores: [4, 2] });
+    const next = applyTimeout(state);
+    expect(next.currentPlayerIndex).toBe(1);
+    expect(next.players[0]!.hand).toEqual(hand);
+    expect(next.players.map((p) => p.score)).toEqual([4, 2]);
+    expect(next.lastMove).toEqual({ type: 'timeout', playerId: 'p1' });
+  });
+
+  it('does not count as a pass, so the game cannot end by timeouts', () => {
+    const state = { ...makeState({ hands: [filler(), filler()], board: board([0, 0, tile('red', 'circle')]) }), consecutivePasses: 1 };
+    const next = applyTimeout(state);
+    expect(next.status).toBe('playing');
+    expect(next.consecutivePasses).toBe(0);
+  });
+
+  it('before the opening move, asks the next player for their own longest line', () => {
+    const longHand = [tile('red', 'circle'), tile('red', 'square'), tile('red', 'star'), tile('red', 'cross'), tile('blue', 'clover'), tile('green', 'diamond')];
+    const shortHand = [tile('red', 'circle'), tile('blue', 'square'), tile('green', 'star'), tile('red', 'circle'), tile('blue', 'square'), tile('green', 'star')];
+    const state = makeState({ hands: [longHand, shortHand], bag: filler(), minTilesFirstMove: 4 });
+    const next = applyTimeout(state);
+    expect(next.currentPlayerIndex).toBe(1);
+    expect(next.minTilesFirstMove).toBe(1);
+  });
+
+  it('does nothing once the game is over', () => {
+    const state: GameState = { ...makeState({ hands: [filler(), filler()] }), status: 'finished' };
+    expect(applyTimeout(state)).toBe(state);
   });
 });

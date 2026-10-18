@@ -71,6 +71,8 @@ export function usePanZoom(container: RefObject<HTMLElement | null>) {
 
     const onDown = (e: PointerEvent) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      // Tiles that can be dragged handle their own gestures.
+      if ((e.target as HTMLElement).closest('[data-draggable]')) return;
       const p = local(e);
       pointers.set(e.pointerId, p);
       if (pointers.size === 1) {

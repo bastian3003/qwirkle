@@ -6,7 +6,6 @@ import {
   type Tile,
   cellKey,
   evaluatePlacement,
-  frontierCells,
 } from '@qwirkle/game';
 
 /** The board including tiles the player has put down but not yet confirmed. */
@@ -15,15 +14,6 @@ export function withPending(board: Board, pending: readonly Placement[]): Board 
   const next: Record<string, Tile> = { ...board };
   for (const p of pending) next[cellKey(p.x, p.y)] = p.tile;
   return next;
-}
-
-/**
- * Every empty cell next to a tile (placed or pending) where a tile could be put down.
- * Deliberately not filtered by the rules: finding a spot that fits is the game,
- * so the app must not give it away.
- */
-export function candidateSlots(board: Board, pending: readonly Placement[]): Position[] {
-  return frontierCells(withPending(board, pending));
 }
 
 /** Checks the pending move with the shared rules. Only called when the player confirms. */

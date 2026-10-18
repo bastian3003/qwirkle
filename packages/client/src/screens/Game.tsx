@@ -1,9 +1,10 @@
 import { type Placement, type Position, type Tile, cellKey, isBoardEmpty } from '@qwirkle/game';
-import type { ClientMessage, RoomView } from '@qwirkle/server/protocol';
-import { useEffect, useMemo, useState } from 'react';
-import { BoardView } from '../components/BoardView';
+import { COUNTDOWN_MS, type ClientMessage, type RoomView } from '@qwirkle/server/protocol';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { type BoardHandle, BoardView } from '../components/BoardView';
 import { TileFace, tileLabel } from '../components/TileView';
-import { candidateSlots, checkMove } from '../logic';
+import { useTileDrag } from '../components/useTileDrag';
+import { checkMove } from '../logic';
 import { errorText, lastMoveText, points, tiles } from '../texts';
 
 interface Props {
@@ -15,6 +16,10 @@ interface Props {
 }
 
 type Mode = 'place' | 'swap';
+/** Where a dragged tile comes from: the hand, or a pending tile's cell on the board. */
+type DragSource = 'hand' | Position;
+
+const sameCell = (a: Position, b: Position) => a.x === b.x && a.y === b.y;
 
 export function Game({ room, send, errorAt, onLeave }: Props) {
   const game = room.game!;
@@ -29,11 +34,16 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
   const [waiting, setWaiting] = useState(false);
   /** Why the last attempt to confirm was refused. Shown until the move is changed. */
   const [moveError, setMoveError] = useState<string | null>(null);
+  const boardRef = useRef<BoardHandle>(null);
+  const handRef = useRef<HTMLDivElement>(null);
 
   // A new state from the server: drop pending tiles that were played or whose cell is now taken.
+  // When the turn is over (also by timeout), unconfirmed tiles go back to the hand.
   useEffect(() => {
     const inHand = new Set(you.hand.map((t) => t.id));
-    setPending((ps) => ps.filter((p) => inHand.has(p.tile.id) && !game.board[cellKey(p.x, p.y)]));
+    setPending((ps) =>
+      game.isYourTurn ? ps.filter((p) => inHand.has(p.tile.id) && !game.board[cellKey(p.x, p.y)]) : [],
+    );
     setSwapIds((ids) => new Set([...ids].filter((id) => inHand.has(id))));
     setSelectedId((id) => (id && inHand.has(id) ? id : null));
     setWaiting(false);
@@ -46,14 +56,8 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
   const hand = you.hand.filter((t) => !pendingIds.has(t.id));
   const selected = hand.find((t) => t.id === selectedId) ?? null;
   const myTurn = game.isYourTurn && !waiting;
+  const canPlace = myTurn && mode === 'place';
   const firstMove = isBoardEmpty(game.board);
-
-  // All free cells next to the tiles, not just the ones where the selected tile fits:
-  // spotting a fitting place is the point of the game.
-  const slots = useMemo(
-    () => (myTurn && mode === 'place' && selected ? candidateSlots(game.board, pending) : []),
-    [myTurn, mode, selected, game.board, pending],
-  );
   const missingForStart = firstMove ? Math.max(0, game.minTilesFirstMove - pending.length) : 0;
 
   // Any change to the move clears the old complaint.
@@ -64,7 +68,55 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
     return new Set(m?.type === 'place' ? m.placements.map((p) => cellKey(p.x, p.y)) : []);
   }, [game.lastMove]);
 
+  // ---- Turn clock ----
+  // The server sends the time left; anchor it to this device's clock on arrival.
+  const deadline = useMemo(
+    () => (room.turnRemainingMs === null ? null : performance.now() + room.turnRemainingMs),
+    [room],
+  );
+  const [now, setNow] = useState(() => performance.now());
+  useEffect(() => {
+    if (deadline === null) return;
+    setNow(performance.now());
+    const timer = setInterval(() => setNow(performance.now()), 200);
+    return () => clearInterval(timer);
+  }, [deadline]);
+  const remainingMs = deadline === null ? null : Math.max(0, deadline - now);
+  const showCountdown = game.status === 'playing' && remainingMs !== null && remainingMs <= COUNTDOWN_MS;
+
+  // ---- Placing tiles ----
+
+  /** The free cell a tile would land on at this screen point, or null. */
+  function targetCell(x: number, y: number, source: DragSource): Position | null {
+    const cell = boardRef.current?.cellAt(x, y);
+    if (!cell || game.board[cellKey(cell.x, cell.y)]) return null;
+    const occupant = pending.find((p) => sameCell(p, cell));
+    if (occupant && !(source !== 'hand' && sameCell(source, cell))) return null;
+    return cell;
+  }
+
+  function isOverHand(x: number, y: number): boolean {
+    const r = handRef.current?.getBoundingClientRect();
+    return !!r && x >= r.left && x <= r.right && y >= r.top - 20 && y <= r.bottom;
+  }
+
+  const { drag, press, consumeClick } = useTileDrag<DragSource>((tile, source, x, y) => {
+    if (!canPlace) return;
+    const cell = targetCell(x, y, source);
+    if (cell) {
+      setPending((ps) => [
+        ...ps.filter((p) => source === 'hand' || !sameCell(p, source)),
+        { x: cell.x, y: cell.y, tile },
+      ]);
+      setSelectedId(null);
+    } else if (source !== 'hand' && isOverHand(x, y)) {
+      takeBack(source);
+    }
+  });
+  const dropTarget = drag && canPlace ? targetCell(drag.x, drag.y, drag.source) : null;
+
   function tapHandTile(tile: Tile) {
+    if (consumeClick()) return;
     if (mode === 'swap') {
       setSwapIds((ids) => {
         const next = new Set(ids);
@@ -78,13 +130,13 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
   }
 
   function placeAt(cell: Position) {
-    if (!selected) return;
+    if (!selected || !canPlace) return;
     setPending((ps) => [...ps, { x: cell.x, y: cell.y, tile: selected }]);
     setSelectedId(null);
   }
 
   function takeBack(cell: Position) {
-    setPending((ps) => ps.filter((p) => p.x !== cell.x || p.y !== cell.y));
+    setPending((ps) => ps.filter((p) => !sameCell(p, cell)));
   }
 
   function act(msg: ClientMessage) {
@@ -126,11 +178,11 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
         : `${tiles(swapIds.size)} ausgewählt.`;
     }
     if (moveError) return moveError;
-    if (selected) return 'Tippe auf ein freies Feld.';
+    if (selected) return 'Tippe aufs Spielfeld, wo der Stein hin soll.';
     if (firstMove && pending.length === 0) return `Du fängst an! Lege ${tiles(game.minTilesFirstMove)} in eine Reihe.`;
     if (pending.length > 0) return 'Weiter legen oder auf „Legen“ tippen.';
     if (game.canPass) return 'Kein Stein passt mehr. Du kannst nur passen.';
-    return 'Du bist dran! Tippe einen Stein an.';
+    return 'Du bist dran! Zieh einen Stein aufs Spielfeld.';
   }
 
   return (
@@ -168,15 +220,28 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
         </p>
       )}
 
-      <BoardView
-        board={game.board}
-        pending={pending}
-        slots={slots}
-        highlight={highlight}
-        onSlotTap={placeAt}
-        onPendingTap={takeBack}
-        fitKey={Object.keys(game.board).length}
-      />
+      <div className="board-area">
+        <BoardView
+          handle={boardRef}
+          board={game.board}
+          pending={pending}
+          highlight={highlight}
+          dropTarget={dropTarget}
+          draggingFrom={drag && drag.source !== 'hand' ? drag.source : null}
+          onEmptyCellTap={placeAt}
+          onPendingTap={(cell) => !consumeClick() && takeBack(cell)}
+          onPendingPress={(e, p) => canPlace && press(e, p.tile, { x: p.x, y: p.y })}
+          fitKey={Object.keys(game.board).length}
+        />
+        {showCountdown && (
+          <div className={`countdown${game.isYourTurn ? ' mine' : ''}`} role="timer" data-testid="countdown">
+            <span className="countdown-number">{Math.ceil(remainingMs / 1000)}</span>
+            <span className="countdown-text">
+              {game.isYourTurn ? 'Schnell, deine Zeit läuft ab!' : `${nameOf(game.currentPlayerId)} muss sich beeilen`}
+            </span>
+          </div>
+        )}
+      </div>
 
       <footer className="controls">
         <p
@@ -187,18 +252,20 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
           {hint()}
         </p>
 
-        <div className="hand" role="group" aria-label="Deine Steine">
+        <div className="hand" role="group" aria-label="Deine Steine" ref={handRef}>
           {hand.map((t) => {
             const isSelected = mode === 'place' ? t.id === selectedId : swapIds.has(t.id);
+            const lifted = drag?.source === 'hand' && drag.tile.id === t.id;
             return (
               <button
                 key={t.id}
-                className={`hand-tile${isSelected ? ' selected' : ''}${mode === 'swap' ? ' swap' : ''}`}
+                className={`hand-tile${isSelected ? ' selected' : ''}${mode === 'swap' ? ' swap' : ''}${lifted ? ' lifted' : ''}`}
                 data-testid="hand-tile"
                 data-color={t.color}
                 data-shape={t.shape}
                 aria-pressed={isSelected}
                 aria-label={tileLabel(t)}
+                onPointerDown={(e) => canPlace && press(e, t, 'hand')}
                 onClick={() => tapHandTile(t)}
                 disabled={game.status === 'finished'}
               >
@@ -247,6 +314,12 @@ export function Game({ room, send, errorAt, onLeave }: Props) {
           )}
         </div>
       </footer>
+
+      {drag && (
+        <div className="drag-ghost" style={{ left: drag.x, top: drag.y }} aria-hidden="true">
+          <TileFace tile={drag.tile} />
+        </div>
+      )}
 
       {game.status === 'finished' && (
         <GameOver room={room} onNewGame={() => send({ type: 'new_game' })} onLeave={onLeave} opponentName={opponent?.name} />

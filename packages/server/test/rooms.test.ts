@@ -129,3 +129,36 @@ describe('RoomManager', () => {
     expect(manager.getRoom('BBBBB')).toBeDefined();
   });
 });
+
+describe('turn clock', () => {
+  it('reports the remaining time and stops it on request', () => {
+    const { manager, room, advance } = startedRoom();
+    expect(manager.view(room, 'p1', () => true).turnRemainingMs).toBeNull();
+    manager.startClock(room, 70_000);
+    advance(20_000);
+    expect(manager.view(room, 'p1', () => true).turnRemainingMs).toBe(50_000);
+    manager.stopClock(room);
+    expect(manager.view(room, 'p1', () => true).turnRemainingMs).toBeNull();
+  });
+
+  it('times out only the turn the clock was started for', () => {
+    const { manager, room } = startedRoom();
+    const { current, other } = turnOrder(room);
+    const serial = room.turnSerial;
+    expect(manager.timeout(room, serial)).toBe(true);
+    expect(room.game!.lastMove).toEqual({ type: 'timeout', playerId: current });
+    expect(turnOrder(room).current).toBe(other);
+    // A second expiry for the old turn must not skip the new player too.
+    expect(manager.timeout(room, serial)).toBe(false);
+    expect(turnOrder(room).current).toBe(other);
+  });
+
+  it('starts a new turn after every move', () => {
+    const { manager, room } = startedRoom();
+    const before = room.turnSerial;
+    manager.startClock(room, 1000);
+    manager.timeout(room, before);
+    expect(room.turnSerial).toBe(before + 1);
+    expect(room.turnDeadline).toBeNull();
+  });
+});

@@ -112,7 +112,12 @@ describe('server', () => {
     expect(welcome.code).toMatch(/^[A-Z2-9]{5}$/);
     expect(welcome.playerId).toBe('p1');
     const { room } = await mama.next('room');
-    expect(room).toEqual({ code: welcome.code, players: [{ id: 'p1', name: 'Mama', connected: true }], game: null });
+    expect(room).toEqual({
+      code: welcome.code,
+      players: [{ id: 'p1', name: 'Mama', connected: true }],
+      game: null,
+      turnRemainingMs: null,
+    });
   });
 
   it('starts the game for both players when the second one joins', async () => {
@@ -249,5 +254,58 @@ describe('static files', () => {
   it('does not serve files outside the folder', async () => {
     const res = await get('/..%2f..%2fetc%2fpasswd');
     expect(await res.text()).not.toContain('root:');
+  });
+});
+
+describe('turn clock', () => {
+  let fast: RunningServer;
+
+  beforeEach(async () => {
+    fast = await startServer({ port: 0, host: '127.0.0.1', turnTimeMs: 300 });
+  });
+
+  afterEach(async () => {
+    await fast.close();
+  });
+
+  async function startFastGame() {
+    const a = await Client.connect(fast.port);
+    const b = await Client.connect(fast.port);
+    clients.push(a, b);
+    a.send({ type: 'create_room', name: 'Mama' });
+    const { code } = await a.next('welcome');
+    b.send({ type: 'join_room', code, name: 'Gabi' });
+    await b.next('welcome');
+    const roomA = await waitFor(a, (r) => r.game !== null);
+    await waitFor(b, (r) => r.game !== null);
+    return { a, b, code, roomA };
+  }
+
+  it('sends the remaining time to both players once the game starts', async () => {
+    const { roomA } = await startFastGame();
+    expect(roomA.turnRemainingMs).toBeGreaterThan(0);
+    expect(roomA.turnRemainingMs).toBeLessThanOrEqual(300);
+  });
+
+  it('forfeits the turn when time runs out and starts the clock for the other player', async () => {
+    const { a, b, roomA } = await startFastGame();
+    const starter = roomA.game!.currentPlayerId;
+    const forA = await waitFor(a, (r) => r.game!.lastMove?.type === 'timeout');
+    expect(forA.game!.lastMove).toEqual({ type: 'timeout', playerId: starter });
+    expect(forA.game!.currentPlayerId).not.toBe(starter);
+    expect(forA.turnRemainingMs).toBeGreaterThan(0);
+    await waitFor(b, (r) => r.game!.lastMove?.type === 'timeout');
+  });
+
+  it('stops the clock while the player whose turn it is is offline', async () => {
+    const { a, b, roomA } = await startFastGame();
+    const [current, other] = roomA.game!.currentPlayerId === 'p1' ? [a, b] : [b, a];
+    await current.close();
+    const paused = await waitFor(other, (r) => r.players.some((p) => !p.connected));
+    expect(paused.turnRemainingMs).toBeNull();
+    // Well past the turn time: no timeout happened while she was away.
+    await new Promise((r) => setTimeout(r, 500));
+    const room = fast.manager.getRoom(paused.code)!;
+    expect(room.game!.lastMove).toBeNull();
   });
 });

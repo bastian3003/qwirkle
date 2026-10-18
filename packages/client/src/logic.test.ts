@@ -1,27 +1,10 @@
 import { type Board, type Tile, cellKey } from '@qwirkle/game';
 import { describe, expect, it } from 'vitest';
-import { bounds, candidateSlots, checkMove, withPending } from './logic';
+import { bounds, checkMove, withPending } from './logic';
 import { lastMoveText } from './texts';
 
 const t = (color: Tile['color'], shape: Tile['shape'], n = 0): Tile => ({ id: `${color}-${shape}-${n}`, color, shape });
 const keys = (cells: { x: number; y: number }[]) => cells.map((c) => cellKey(c.x, c.y)).sort();
-
-describe('candidateSlots', () => {
-  it('offers only the origin on an empty board', () => {
-    expect(candidateSlots({}, [])).toEqual([{ x: 0, y: 0 }]);
-  });
-
-  it('offers every free neighbour, whether or not a tile would fit there', () => {
-    const board: Board = { [cellKey(0, 0)]: t('red', 'circle') };
-    expect(keys(candidateSlots(board, []))).toEqual(['-1,0', '0,-1', '0,1', '1,0']);
-  });
-
-  it('includes the neighbours of pending tiles', () => {
-    const board: Board = { [cellKey(0, 0)]: t('red', 'circle') };
-    const pending = [{ x: 1, y: 0, tile: t('red', 'square') }];
-    expect(keys(candidateSlots(board, pending))).toEqual(['-1,0', '0,-1', '0,1', '1,-1', '1,1', '2,0']);
-  });
-});
 
 describe('checkMove', () => {
   it('scores a valid move with the shared rules', () => {
@@ -64,5 +47,6 @@ describe('lastMoveText', () => {
     );
     expect(lastMoveText({ type: 'swap', playerId: 'p2', count: 3 }, nameOf, 'p1')).toBe('Gabi hat 3 Steine getauscht.');
     expect(lastMoveText({ type: 'pass', playerId: 'p1' }, nameOf, 'p1')).toBe('Du hast gepasst.');
+    expect(lastMoveText({ type: 'timeout', playerId: 'p2' }, nameOf, 'p1')).toBe('Gabi war zu langsam – der Zug ist verfallen.');
   });
 });
